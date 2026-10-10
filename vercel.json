@@ -1,4 +1,15 @@
 {
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }],
-  "functions": { "api/index.js": { "includeFiles": "data/bundles/**", "maxDuration": 30 } }
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    }
+  ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "data/bundles/**",
+      "maxDuration": 30
+    }
+  }
 }
