@@ -2,6 +2,7 @@
 //   - images (PNG, JPG, WebP): OCR with tesseract.js
 //   - PDFs: the text layer when there is one, otherwise each page is drawn to an image and OCR'd
 // Language data ships in ocr/ so nothing is downloaded at run time.
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createWorker, PSM } from 'tesseract.js';
 
@@ -14,7 +15,7 @@ function worker() {
   workerPromise ??= createWorker('eng', 1, {
     langPath: LANG_DIR,
     gzip: false,
-    cachePath: process.env.VERCEL ? '/tmp' : undefined,
+    cachePath: tmpdir(), // tesseract.js would otherwise drop a copy of the language file in the working directory
   }).then(async (w) => {
     await w.setParameters({ tessedit_pageseg_mode: PSM.AUTO, preserve_interword_spaces: '1' });
     return w;
