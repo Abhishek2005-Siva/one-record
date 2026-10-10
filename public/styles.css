@@ -1,0 +1,117 @@
+/* Plain rows, one accent, big calm type. Red only where it carries meaning. */
+
+:root {
+  --paper: #faf7f2;
+  --ink: #1f2421;
+  --muted: #666b66;
+  --line: #e3ddd0;
+  --accent: #1f6f6a;
+  --accent-soft: #e4efec;
+  --alert: #a82a1f;
+  --alert-soft: #f7e6e3;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 18px/1.5 var(--sans);
+}
+
+a { color: var(--accent); }
+
+h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.2; margin: 0; }
+h1 { font-size: 1.9rem; }
+h2 { font-size: 1.3rem; }
+
+.page { max-width: 44rem; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+
+/* header and the three patient screens */
+.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--line); }
+.top .who { font-family: var(--serif); font-size: 1.15rem; }
+.top .who small { font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-left: 0.5rem; }
+
+nav.tabs { display: flex; gap: 1.25rem; }
+nav.tabs a { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+.intro { margin: 1.5rem 0 1rem; }
+.intro p { margin: 0.35rem 0 0; color: var(--muted); }
+
+/* filters */
+.filters { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 1rem 0 0.25rem; }
+.filters button {
+  font: inherit; background: none; border: 0; padding: 0; min-height: 44px;
+  color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+}
+.filters button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.filters button:focus-visible, nav.tabs a:focus-visible, .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* the timeline: rows with thin dividers */
+.year { margin: 1.75rem 0 0; padding-bottom: 0.25rem; font-family: var(--serif); font-size: 1rem; color: var(--muted); border-bottom: 1px solid var(--ink); }
+ul.rows { list-style: none; margin: 0; padding: 0; }
+ul.rows > li { display: grid; grid-template-columns: 5.5rem 1fr; gap: 0 1rem; padding: 0.8rem 0; border-bottom: 1px solid var(--line); }
+ul.rows .date { color: var(--muted); font-size: 0.9rem; padding-top: 0.2rem; font-variant-numeric: tabular-nums; }
+ul.rows .title { font-weight: 600; }
+ul.rows .meta { color: var(--muted); font-size: 0.92rem; }
+ul.rows .kind { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+ul.rows li.alert .title { color: var(--alert); }
+
+.count { margin: 0.25rem 0 0; }
+.more { margin: 1.5rem 0 0; }
+
+/* lab results and "given in hospital" lists open in place */
+details > summary { padding: 0.6rem 0; cursor: pointer; color: var(--accent); }
+details > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+ul.results { list-style: none; margin: 0.25rem 0 0.5rem; padding: 0; font-size: 0.95rem; }
+ul.results li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0; border-top: 1px dotted var(--line); }
+ul.results .value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+ul.results .flag, ul.results li.abnormal { color: var(--alert); font-weight: 600; }
+
+/* medicines: one group per ingredient, entries underneath */
+ul.rows.stacked > li { display: block; }
+ul.entries { list-style: none; margin: 0.35rem 0 0; padding: 0; }
+ul.entries > li { padding: 0.35rem 0; }
+ul.entries .name { font-weight: 600; }
+li.solo ul.entries .name { font-weight: 400; }
+.notice { font-size: 0.95rem; }
+details.earlier { margin-top: 1.75rem; }
+
+.empty { padding: 2.5rem 0; color: var(--muted); }
+.empty strong { display: block; color: var(--ink); font-family: var(--serif); font-size: 1.2rem; margin-bottom: 0.35rem; }
+
+/* one calm line, never a modal */
+.notice { margin: 1rem 0; padding: 0.65rem 0.9rem; border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.notice.warn { border-left-color: var(--alert); background: var(--alert-soft); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 1.25rem;
+  font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 4px; cursor: pointer; text-decoration: none;
+}
+.btn.quiet { color: var(--accent); background: none; border: 1px solid var(--accent); }
+
+@media (max-width: 30rem) {
+  body { font-size: 17px; }
+  ul.rows > li { grid-template-columns: 1fr; }
+  ul.rows .date { padding-top: 0; }
+}
+
+/* The emergency summary should print on one A4 sheet: smaller type, tighter rows, no "earlier" lists. */
+@media print {
+  body { background: #fff; font-size: 10pt; line-height: 1.3; }
+  h1 { font-size: 16pt; }
+  nav.tabs, .filters, .btn, .no-print { display: none !important; }
+  .page { max-width: none; padding: 0; }
+  ul.rows.stacked > li { padding: 1.2mm 0; }
+  ul.entries { margin-top: 0.5mm; }
+  ul.entries > li { padding: 0.4mm 0; }
+  details.earlier { display: none; }
+  .notice { padding: 1mm 2mm; margin: 1mm 0; }
+  li, .notice { break-inside: avoid; }
+}
