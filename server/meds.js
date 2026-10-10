@@ -1,5 +1,7 @@
 import { BRANDS, INGREDIENTS, FAMILIES, ALLERGY_CROSS, LABS } from './catalog.js';
 
+const KNOWN_INGREDIENTS = new Set([...Object.values(INGREDIENTS), ...Object.values(BRANDS).flat()]);
+
 const words = (s) => s.toLowerCase().replace(/[^a-z0-9\- ]/g, ' ').split(/\s+/).filter(Boolean);
 
 const NOISE = /^([\d.]+|hr|mg|ml|mcg|g|actuat|abuse-deterrent|extended|release|oral|nda\d+)$/;
@@ -122,6 +124,14 @@ export function checkNewMedicine(name, existingRecords, allergies, today) {
   const warnings = [];
   const ings = ingredientsOf(name);
   const { active } = reconcile(existingRecords, today);
+
+  // Say so when the name is not one we know, instead of passing it silently as "no problem".
+  if (!ings.length || ings.some((i) => !KNOWN_INGREDIENTS.has(i))) {
+    warnings.push({
+      type: 'unknown',
+      text: `We do not recognise "${name}", so it could not be checked against this patient's medicines or allergies. Check it by hand.`,
+    });
+  }
 
   for (const it of active) {
     const shared = it.ingredients.filter((i) => ings.includes(i));

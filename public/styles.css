@@ -57,6 +57,9 @@ nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--
 .year { margin: 1.75rem 0 0; padding-bottom: 0.25rem; font-family: var(--serif); font-size: 1rem; color: var(--muted); border-bottom: 1px solid var(--ink); }
 ul.rows { list-style: none; margin: 0; padding: 0; }
 ul.rows > li { display: grid; grid-template-columns: 5.5rem 1fr; gap: 0 1rem; padding: 0.8rem 0; border-bottom: 1px solid var(--line); }
+/* long unbroken text (a lab organism name, a file name) must wrap, not push the page wider than a phone */
+ul.rows > li > .body { min-width: 0; overflow-wrap: anywhere; }
+ul.results li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 ul.rows .date { color: var(--muted); font-size: 0.9rem; padding-top: 0.2rem; font-variant-numeric: tabular-nums; }
 ul.rows .title { font-weight: 600; }
 ul.rows .meta { color: var(--muted); font-size: 0.92rem; }
@@ -71,7 +74,7 @@ details > summary { padding: 0.6rem 0; cursor: pointer; color: var(--accent); }
 details > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 ul.results { list-style: none; margin: 0.25rem 0 0.5rem; padding: 0; font-size: 0.95rem; }
 ul.results li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0; border-top: 1px dotted var(--line); }
-ul.results .value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+ul.results .value { text-align: right; font-variant-numeric: tabular-nums; max-width: 65%; overflow-wrap: anywhere; } /* numbers are short; a long text result (a culture) has to wrap, not widen the page */
 ul.results .flag, ul.results li.abnormal { color: var(--alert); font-weight: 600; }
 
 /* medicines: one group per ingredient, entries underneath */
@@ -103,8 +106,9 @@ details.earlier { margin-top: 1.75rem; }
 }
 
 /* The emergency summary should print on one A4 sheet: smaller type, tighter rows, no "earlier" lists. */
+@page { size: A4; margin: 9mm; }
 @media print {
-  body { background: #fff; font-size: 10pt; line-height: 1.3; }
+  body { background: #fff; font-size: 9.5pt; line-height: 1.25; }
   h1 { font-size: 16pt; }
   nav.tabs, .filters, .btn, .no-print { display: none !important; }
   .page { max-width: none; padding: 0; }
@@ -112,6 +116,8 @@ details.earlier { margin-top: 1.75rem; }
   ul.entries { margin-top: 0.5mm; }
   ul.entries > li { padding: 0.4mm 0; }
   details.earlier { display: none; }
+  /* the printed summary keeps drug, dose and how often; the prescribing history stays on screen */
+  ul.entries > li > div.meta { display: none; }
   .notice { padding: 1mm 2mm; margin: 1mm 0; }
   li, .notice { break-inside: avoid; }
 }

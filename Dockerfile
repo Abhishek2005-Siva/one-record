@@ -11,6 +11,7 @@ RUN npm ci --omit=dev
 
 COPY server ./server
 COPY src ./src
+COPY ocr ./ocr
 COPY public ./public
 COPY data/bundles ./data/bundles
 

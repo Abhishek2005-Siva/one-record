@@ -4,6 +4,7 @@
 import { el, fmtDate, plural, upperFirst } from './views/dom.js';
 import { renderTimeline } from './views/timeline.js';
 import { renderMedicines } from './views/medicines.js';
+import { scanPanel } from './views/scan.js';
 
 const main = document.getElementById('main');
 
@@ -263,12 +264,17 @@ async function patientTimeline(body, ov) {
 
 function addPatientForm(onSaved) {
   const msg = msgBox();
-  const kind = field({ name: 'kind', label: 'What are you adding?', options: [{ value: 'document', label: 'A document or report' }, { value: 'allergy', label: 'An allergy' }] });
+  const kind = field({
+    name: 'kind', label: 'What are you adding?',
+    options: [{ value: 'scan', label: 'Scan a report or prescription (we read it for you)' }, { value: 'document', label: 'A document, stored as it is' }, { value: 'allergy', label: 'An allergy' }],
+  });
   const holder = el('div');
   const form = el('form', { novalidate: true }, kind, holder, msg);
   const submit = el('button', { class: 'btn', type: 'submit' }, 'Save');
   const draw = () => {
     const k = kind.querySelector('select').value;
+    say(msg, '');
+    if (k === 'scan') return fill(holder, scanPanel({ api, onSaved }));
     fill(holder, 
       ...(k === 'document'
         ? [field({ name: 'title', label: 'Name', placeholder: 'Blood test from Metro Lab', required: true, max: 120 }),
@@ -298,7 +304,7 @@ function addPatientForm(onSaved) {
       onSaved();
     } catch (e) { say(msg, e.message, 'warn'); markInvalid(form, msg); submit.disabled = false; }
   });
-  return el('details', { class: 'add no-print' }, el('summary', null, 'Add something'), form);
+  return el('details', { class: 'add no-print' }, el('summary', null, 'Add something or scan a report'), form);
 }
 
 const toBase64 = (file) => new Promise((resolve, reject) => {
@@ -564,7 +570,7 @@ function addRecordForm(code, onSaved) {
           const { warnings } = await api(`${base}/records`, { method: 'POST', body: { ...v, check: true } });
           if (warnings.length) {
             confirmed = true;
-            fill(msg, ...warnings.map((w) => el('p', { class: `notice${w.type === 'same-family' ? '' : ' warn'}`, role: 'alert' }, w.text)));
+            fill(msg, ...warnings.map((w) => el('p', { class: `notice${w.type === 'same-family' || w.type === 'unknown' ? '' : ' warn'}`, role: 'alert' }, w.text)));
             submit.textContent = 'Add anyway';
             submit.disabled = false;
             return;

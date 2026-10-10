@@ -20,7 +20,8 @@ Prescriptions, lab reports, scans and discharge summaries sit in different place
 - **Timeline**: visits, hospital stays, tests, scans, medicines, vaccines and documents in date order, grouped by year, with filters. Lab results expand in place. Records with no date are listed at the end, not dropped.
 - **Medicines**: one list built from every source, split into "taking now" and "earlier". An ingredient that appears in more than one active medicine gets a single warning line above it.
 - **Share**: make a six-character code, choose *emergency summary only* or *everything*, and choose 1 hour, 24 hours or 7 days. Stop sharing at any time. The same screen shows an access log.
-- **Add something**: a document (PDF, PNG, JPG or WebP up to 3 MB, with a name, date and note) or an allergy. A document is stored as a labelled entry; nothing is read out of it (there is no OCR).
+- **Scan a report**: take a photo of, or upload, a lab report, prescription, discharge summary or scan report (PNG, JPG, WebP or PDF, up to 3 MB). The app reads the text, works out what kind of document it is, and shows what it found: the date, who issued it, each test result or medicine. The patient corrects anything that was misread, unticks lines they do not want, and presses Save. Nothing is stored before that. See [How scanning works](#how-scanning-works).
+- **Add something else**: a document stored as it is (no reading), or an allergy.
 
 **Hospital (desktop-first, two screens)**
 - **Open a record** by entering the patient's code. A wrong, expired or revoked code gets a plain message and no data. After 10 wrong codes in a minute from one address, further attempts are refused until the minute is up.
@@ -35,7 +36,7 @@ Prescriptions, lab reports, scans and discharge summaries sit in different place
 
 ## What it does not do
 
-No chatbot, booking, payments, wearables or blockchain. No drug-interaction database (see below). No multi-language support. No real login. No upload screen for FHIR bundles: the sample bundles are loaded once, at first start. No OCR of uploaded documents. No ABDM integration.
+No chatbot, booking, payments, wearables or blockchain. No drug-interaction database (see below). No multi-language support. No real login. No upload screen for FHIR bundles: the sample bundles are loaded once, at first start. Scanning reads printed English text only: handwriting and other languages are not read. No ABDM integration.
 
 ## Run it
 
@@ -67,12 +68,25 @@ Anything written while the app runs (share codes, the access log, added records 
 
 ### Vercel
 
-The repository includes a Vercel setup (`api/index.js`, `vercel.json`, `.vercelignore`) that runs the same Express app as a serverless function. **It has not been deployed**, and `SESSION_SECRET` must be set in the project before it would work properly. Be aware of what that setup means for the data:
+The repository includes a Vercel setup (`api/index.js`, `vercel.json`, `.vercelignore`) that runs the same Express app as a serverless function. A copy is deployed at https://one-record-one.vercel.app. `SESSION_SECRET` must be set in the Vercel project. Be aware of what that setup means for the data:
 
 - The filesystem is read-only except `/tmp`, so the database lives in `/tmp`. Everything written while the app runs (share codes, the access log, added records, uploaded files) is lost when the instance restarts.
 - Each instance builds its own database from `data/bundles/`. If a request lands on a different instance, a code the patient just made may not exist there. A patient-then-hospital walkthrough can therefore fail intermittently.
 
-For a reliable demo, run it with `npm start` or Docker on one instance.
+Reading a scanned file also needs memory and a few seconds of CPU, so the function is configured with a 60-second limit.
+
+For a reliable demo, run it with `npm start` or Docker on one instance. When several people use the Vercel copy at the same moment, share codes can go missing between instances (a test with 30 simultaneous patient-then-hospital flows failed 28 times).
+
+## How scanning works
+
+1. **Reading.** An image is read with [Tesseract](https://github.com/tesseract-ocr/tesseract) (through `tesseract.js`). A PDF is read from its text layer when it has one; a PDF that is only a picture (a scan) has each page drawn to an image and read the same way. At most the first four pages are read. The English language data is in `ocr/`, so nothing is downloaded at run time.
+2. **Sorting** (`server/scan.js`). The text is matched against a short list of lab tests, medicine names and document headings. It finds the date (day first, as in India; the date next to a "Report date" label wins over a collection date; birth dates and future dates are ignored), the issuing lab or clinic, and then either lab results (units such as mmol/L, `cells/cumm` and lakhs are converted to the unit this app stores), medicines with dose, how often (`1-0-1`, `OD`, `BD`) and course length, a hospital stay, or a scan impression.
+3. **Doubt is shown, not hidden.** A result that is far outside what a person could have (usually a dropped decimal point), or whose unit could not be read, comes back unticked with a note. A report that names a different person from the signed-in patient raises a warning. A medicine that repeats an ingredient the patient already takes, or matches a recorded allergy, is flagged on the review screen before saving. A medicine the app does not know is kept, with a note that it could not be cross-checked.
+4. **Saving** (`POST /api/me/scan/save`). The server checks everything again, because it does not trust what the browser sends back: numbers, units, dates and the file itself. A lab report becomes one lab record with its results; a prescription becomes one medicine record per ticked medicine plus a document record that holds the original file; a discharge summary and a scan report become their own records. The original file is kept with the record and can be opened from the timeline.
+
+**Accuracy.** Clean printed pages read well. A blurry, tilted or low-light photo reads worse, and handwriting does not read at all. The reader's own confidence is shown on the review screen. It is a convenience for entering records, not a substitute for checking them. The sorting rules are hand-written and cover about 25 common blood tests and a few dozen medicine names; anything else is kept as written or saved as a plain document.
+
+**Safety checks on uploads.** The first bytes of the file must match its type (a text file renamed to `.pdf` is refused), an image that claims to be tens of thousands of pixels wide is refused, PDF pages are drawn at a capped size, only two files are read at once, and a read that takes more than 45 seconds is stopped.
 
 ## How the data gets in
 
@@ -88,7 +102,13 @@ Conditions that Synthea files as social or administrative findings (employment, 
 
 ## Disclosures
 
-**Libraries.** The only runtime dependency is [Express](https://expressjs.com/) 4. Everything else is built into Node: `node:sqlite` for storage, `node:crypto` for codes and signed tokens, `node:test` for tests. The front end is plain HTML, CSS and JavaScript with no framework, no build step, no CDN and no web fonts (system fonts only).
+**Libraries.** Runtime dependencies:
+- [Express](https://expressjs.com/) 4 (MIT), the web server.
+- [tesseract.js](https://github.com/naptha/tesseract.js) 7 (Apache-2.0) with the `eng.traineddata` file from [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) (Apache-2.0), for reading images.
+- [pdfjs-dist](https://github.com/mozilla/pdf.js) (Apache-2.0), for reading PDFs.
+- [@napi-rs/canvas](https://github.com/Brooooooklyn/canvas) (MIT), to draw scanned PDF pages so they can be read.
+
+Everything else is built into Node: `node:sqlite` for storage, `node:crypto` for codes and signed tokens, `node:test` for tests. The front end is plain HTML, CSS and JavaScript with no framework, no build step, no CDN and no web fonts (system fonts only).
 
 **Patient data: Synthea.** The people are generated with [Synthea](https://github.com/synthetichealth/synthea) (Apache-2.0), using its prebuilt `synthea-with-dependencies.jar` (build d9d07a6, 18 Aug 2026), on 10 Oct 2026:
 
@@ -116,12 +136,14 @@ Thirty patients were generated and eight were chosen by hand to cover different 
 
 ```
 server/      app.js (the Express app), index.js (starts it), auth.js (signed tokens), db.js (SQLite),
-             import.js, meds.js (medicine reconciliation), catalog.js (hand-written reference tables)
+             import.js, meds.js (medicine reconciliation), catalog.js (hand-written reference tables),
+             ocr.js (images and PDFs to text), scan.js (text to lab results, medicines, dates), files.js (upload checks)
 src/fhir.js  FHIR bundle -> timeline events, allergies, conditions
-public/      the app: index.html, app.js (screens), views/ (timeline, medicines), styles.css, app.css
-api/         Vercel entry point (not deployed)
+public/      the app: index.html, app.js (screens), views/ (timeline, medicines, scan), styles.css, app.css
+ocr/         English language data for the text reader
+api/         Vercel entry point
 data/bundles the eight synthetic patients
 scripts/     picks demo patients out of a Synthea run
-test/        parser, medicine and API tests
+test/        parser, medicine, scan and API tests; fixtures/ has a sample lab report, prescription and scanned PDF
 Dockerfile, vercel.json, .vercelignore, .dockerignore   packaging
 ```

@@ -2,10 +2,13 @@ import express from 'express';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { sign, verify } from './auth.js';
 import { fileURLToPath } from 'node:url';
-import { q, db } from './db.js';
+import { q, db, tx } from './db.js';
 import { seedIfEmpty } from './import.js';
 import { reconcile, checkNewMedicine, ingredientsOf, normaliseLab, flagFor, tidyDrugName } from './meds.js';
 import { LABS, HOSPITALS } from './catalog.js';
+import { decodeUpload, UploadError } from './files.js';
+import { extractText } from './ocr.js';
+import { interpret, KINDS } from './scan.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -23,7 +26,12 @@ if (seeded.length) console.log(`Loaded ${seeded.length} sample patients:`, seede
 const today = () => new Date().toISOString().slice(0, 10);
 const fail = (res, code, message) => res.status(code).json({ error: message });
 const text = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
-const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+// a real calendar day: Date rolls 2026-02-30 over to March, so check that it round-trips
+const isDate = (v) => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
 const age = (dob) => (dob ? Math.floor((Date.now() - Date.parse(dob)) / 31557600000) : null);
 const daysAgo = (d) => (d ? Math.max(0, Math.round((Date.parse(today()) - Date.parse(d)) / 86400000)) : null);
 
@@ -171,33 +179,144 @@ me.post('/shares/:id/revoke', (req, res) => {
 });
 me.get('/log', (req, res) => res.json(q.logFor(req.session.patientId).map((l) => ({ ...l, code: prettyCode(l.code), at: l.at.replace(' ', 'T') + 'Z' }))));
 
-const FILE_TYPES = { 'application/pdf': 'PDF', 'image/png': 'image', 'image/jpeg': 'image', 'image/webp': 'image' };
 me.post('/documents', (req, res) => {
   const title = text(req.body?.title, 120);
   if (!title) return fail(res, 400, 'Give the document a name, like "Blood test from Metro Lab".');
   const date = req.body?.date ? (isDate(req.body.date) ? req.body.date : null) : today();
   if (req.body?.date && !date) return fail(res, 400, 'That date does not look right.');
   const id = randomUUID();
-  let fileId = null;
+  let file = null;
   if (req.body?.file) {
-    const { mime, name, base64 } = req.body.file;
-    if (!FILE_TYPES[mime]) return fail(res, 400, 'Only PDF, PNG, JPG or WebP files can be added.');
-    const body = Buffer.from(String(base64 ?? ''), 'base64');
-    if (!body.length) return fail(res, 400, 'The file looks empty.');
-    if (body.length > 3 * 1024 * 1024) return fail(res, 400, 'Files can be up to 3 MB.');
-    fileId = randomUUID();
-    q.insertRecord({
-      id, patient_id: req.session.patientId, kind: 'document', date, title, detail: text(req.body.detail, 300) || null,
-      source: text(req.body.source, 120) || 'Added by patient', source_kind: 'patient', data: { fileId, fileName: text(name, 100), mime },
-    });
-    db.prepare('INSERT INTO files (id, record_id, mime, name, body) VALUES (?, ?, ?, ?, ?)').run(fileId, id, mime, text(name, 100) || 'file', body);
-  } else {
-    q.insertRecord({
-      id, patient_id: req.session.patientId, kind: 'document', date, title, detail: text(req.body.detail, 300) || null,
-      source: text(req.body?.source, 120) || 'Added by patient', source_kind: 'patient', data: {},
-    });
+    try { file = decodeUpload(req.body.file); } catch (e) { if (e instanceof UploadError) return fail(res, e.status, e.message); throw e; }
   }
+  const fileId = file ? randomUUID() : null;
+  q.insertRecord({
+    id, patient_id: req.session.patientId, kind: 'document', date, title, detail: text(req.body?.detail, 300) || null,
+    source: text(req.body?.source, 120) || 'Added by patient', source_kind: 'patient',
+    data: file ? { fileId, fileName: file.name, mime: file.mime } : {},
+  });
+  if (file) db.prepare('INSERT INTO files (id, record_id, mime, name, body) VALUES (?, ?, ?, ?, ?)').run(fileId, id, file.mime, file.name, file.buf);
   res.status(201).json({ id });
+});
+
+// ---------- scan a report: read it, show what was found, save only after the patient checks it ----------
+// Reading is slow and uses a lot of memory, so only a couple of files are read at once.
+let reading = 0;
+const MAX_READING = 2;
+const READ_TIMEOUT_MS = 45000;
+
+me.post('/scan', async (req, res) => {
+  let file;
+  try { file = decodeUpload(req.body?.file); } catch (e) { if (e instanceof UploadError) return fail(res, e.status, e.message); throw e; }
+  if (reading >= MAX_READING) return fail(res, 503, 'Other files are being read right now. Try again in a few seconds.');
+  reading++;
+  try {
+    let timer;
+    const read = await Promise.race([
+      extractText(file.buf, file.mime),
+      new Promise((_, rej) => { timer = setTimeout(() => rej(new UploadError('Reading took too long. Try a smaller or clearer photo.', 504)), READ_TIMEOUT_MS); }),
+    ]).finally(() => clearTimeout(timer));
+    const p = q.patient(req.session.patientId);
+    const found = interpret(read.text, { patientName: p?.name });
+    const all = q.records(req.session.patientId);
+    const allergies = all.filter((r) => r.kind === 'allergy');
+    // tell the patient now if a medicine on the page repeats something they already take
+    for (const m of found.medicines) {
+      m.checks = checkNewMedicine(m.name, all, allergies, today()).filter((w) => w.type !== 'unknown');
+    }
+    if (read.truncated) found.warnings.push(`Only the first pages of this file were read (it has ${read.pages}).`);
+    if (read.method !== 'pdf-text' && read.confidence != null && read.confidence < 60) {
+      found.warnings.push('This was hard to read, so some of it may be wrong. Check every line against your paper.');
+    }
+    res.json({ ...found, method: read.method, confidence: read.confidence, pages: read.pages, text: read.text.trim().slice(0, 4000), kinds: KINDS });
+  } catch (e) {
+    if (e instanceof UploadError) return fail(res, e.status, e.message);
+    console.error('scan failed:', e?.message ?? e);
+    return fail(res, 422, 'We could not read that file. Try a clearer photo, or save it as a document and fill in the details yourself.');
+  } finally { reading--; }
+});
+
+const FLAGS = new Set(['H', 'HH', 'L', 'LL']);
+const finite = (v) => Number.isFinite(v) && Math.abs(v) < 1e7;
+
+me.post('/scan/save', (req, res) => {
+  let file;
+  try { file = decodeUpload(req.body?.file); } catch (e) { if (e instanceof UploadError) return fail(res, e.status, e.message); throw e; }
+  const r = req.body?.review ?? {};
+  const kind = Object.hasOwn(KINDS, r.kind) ? r.kind : 'other';
+  const date = r.date ? (isDate(r.date) && r.date <= today() ? r.date : null) : null;
+  if (r.date && !date) return fail(res, 400, 'That date does not look right.');
+  const title = text(r.title, 120) || KINDS[kind];
+  const source = text(r.source, 120) || null;
+
+  const results = [];
+  for (const l of (Array.isArray(r.labs) ? r.labs : []).slice(0, 60)) {
+    if (l?.include === false) continue;
+    const value = Number(l?.value);
+    const def = LABS[text(l?.code, 20)];
+    const label = def?.name ?? text(l?.name, 80);
+    if (!label) return fail(res, 400, 'One of the results has no name.');
+    if (l?.value === '' || l?.value == null || !finite(value)) return fail(res, 400, `The result for ${label} should be a number.`);
+    if (def) {
+      const n = normaliseLab(text(l.code, 20), value, text(l.unit, 20) || def.unit);
+      if (n.unknownUnit) return fail(res, 400, `We cannot convert "${text(l.unit, 20)}" for ${def.name}. Use ${def.unit}.`);
+      results.push({ name: def.name, loinc: text(l.code, 20), value: n.value, unit: n.unit, flag: FLAGS.has(l.flag) ? l.flag : flagFor(text(l.code, 20), n.value) });
+    } else {
+      results.push({ name: label, value, unit: text(l?.unit, 20) || null, flag: FLAGS.has(l?.flag) ? l.flag : null });
+    }
+  }
+
+  const meds = [];
+  for (const m of (Array.isArray(r.medicines) ? r.medicines : []).slice(0, 30)) {
+    if (m?.include === false) continue;
+    const name = tidyDrugName(text(m?.name, 120));
+    if (!name) return fail(res, 400, 'One of the medicines has no name.');
+    const days = m?.days ? Math.round(Number(m.days)) : null;
+    if (m?.days && !(days > 0 && days <= 365)) return fail(res, 400, `Days for ${name} should be between 1 and 365.`);
+    meds.push({ name, dose: text(m?.dose, 60) || null, frequency: text(m?.frequency, 60) || null, days });
+  }
+  if (kind === 'prescription' && meds.length && !date) return fail(res, 400, 'Add the date of the prescription so we know how long each medicine lasts.');
+
+  let stay = null;
+  if (kind === 'discharge' && (r.stay?.from || r.stay?.to)) {
+    const from = isDate(r.stay.from) ? r.stay.from : null;
+    const to = isDate(r.stay.to) ? r.stay.to : null;
+    if (from || to) stay = { from: from ?? to, to: to ?? from };
+  }
+
+  const pid = req.session.patientId;
+  const primaryId = randomUUID();
+  const fileId = randomUUID();
+  const common = {
+    fileId, fileName: file.name, mime: file.mime,
+    scan: { method: ['pdf-text', 'ocr', 'mixed'].includes(r.method) ? r.method : null, reviewed: true },
+  };
+  const base = { patient_id: pid, date, source: source ?? 'Added by patient', source_kind: 'patient' };
+  const detail = text(r.detail, 1500) || null;
+
+  // the primary record holds the original file; a prescription also gets one record per medicine
+  let primary;
+  if (kind === 'lab' && results.length) primary = { kind: 'lab', title, detail: null, data: { ...common, results } };
+  else if (kind === 'discharge') primary = { kind: 'discharge', title, detail, data: { ...common, ...(stay ? { stay } : {}) } };
+  else if (kind === 'scan') primary = { kind: 'scan', title, detail, data: common };
+  else if (kind === 'prescription' && meds.length) primary = { kind: 'document', title, detail: `${meds.length} medicine${meds.length === 1 ? '' : 's'} read from this prescription`, data: common };
+  else primary = { kind: 'document', title, detail, data: common };
+
+  tx(() => {
+    q.insertRecord({ id: primaryId, ...base, ...primary });
+    db.prepare('INSERT INTO files (id, record_id, mime, name, body) VALUES (?, ?, ?, ?, ?)').run(fileId, primaryId, file.mime, file.name, file.buf);
+    if (kind === 'prescription') {
+      for (const m of meds) {
+        const end = m.days ? new Date(Date.parse(date) + m.days * 86400000).toISOString().slice(0, 10) : null;
+        q.insertRecord({
+          id: randomUUID(), ...base, kind: 'medicine', title: m.name,
+          detail: [m.dose, m.frequency, m.days && `${m.days} days`].filter(Boolean).join(' · ') || null,
+          data: { status: 'active', dose: m.dose, frequency: m.frequency, endDate: end, times: 1, since: date, ingredients: ingredientsOf(m.name), fromDocument: primaryId },
+        });
+      }
+    }
+  });
+  res.status(201).json({ ok: true, saved: { kind: primary.kind, results: kind === 'lab' ? results.length : 0, medicines: kind === 'prescription' ? meds.length : 0 } });
 });
 me.post('/allergies', (req, res) => {
   const substance = text(req.body?.substance, 80);
@@ -328,6 +447,7 @@ app.use('/api', (req, res) => fail(res, 404, 'Not found.'));
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 app.use((err, req, res, next) => {
   if (err.type === 'entity.too.large') return fail(res, 413, 'That file is too large.');
+  if (err.type === 'entity.parse.failed' || err.type === 'charset.unsupported' || err.type === 'encoding.unsupported') return fail(res, 400, 'That request could not be read.');
   console.error(err);
   fail(res, 500, 'Something went wrong on our side.');
 });

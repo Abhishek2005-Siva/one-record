@@ -8,8 +8,8 @@
   ],
   "functions": {
     "api/index.js": {
-      "includeFiles": "data/bundles/**",
-      "maxDuration": 30
+      "includeFiles": "{data/bundles/**,ocr/**,node_modules/tesseract.js/**,node_modules/tesseract.js-core/**,node_modules/pdfjs-dist/legacy/**,node_modules/@napi-rs/**}",
+      "maxDuration": 60
     }
   }
 }

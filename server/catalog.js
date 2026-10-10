@@ -4,7 +4,7 @@
 // Typical adult ranges; real labs print their own. conv: other unit -> canonical unit.
 export const LABS = {
   '2339-0': { name: 'Blood sugar (glucose)', unit: 'mg/dL', low: 70, high: 140, alias: 'sugar fasting random diabetes', conv: { 'mmol/l': 18.016 } },
-  '4548-4': { name: 'HbA1c', unit: '%', low: 4, high: 5.6, alias: 'sugar diabetes 3 month' },
+  '4548-4': { name: 'HbA1c', unit: '%', low: 4, high: 5.6, alias: 'sugar diabetes 3 month', conv: { '%': 1 } },
   '2093-3': { name: 'Total cholesterol', unit: 'mg/dL', low: 0, high: 200, alias: 'lipid', conv: { 'mmol/l': 38.67 } },
   '2085-9': { name: 'HDL cholesterol', unit: 'mg/dL', low: 40, high: 100, alias: 'lipid good', conv: { 'mmol/l': 38.67 } },
   '18262-6': { name: 'LDL cholesterol', unit: 'mg/dL', low: 0, high: 100, alias: 'lipid bad', conv: { 'mmol/l': 38.67 } },
@@ -13,9 +13,9 @@ export const LABS = {
   '6299-2': { name: 'Blood urea nitrogen', unit: 'mg/dL', low: 7, high: 20, alias: 'bun urea kidney renal rft' },
   '33914-3': { name: 'Kidney filtration rate (eGFR)', unit: 'mL/min', low: 60, high: 999, alias: 'egfr kidney renal rft' },
   '718-7': { name: 'Hemoglobin', unit: 'g/dL', low: 12, high: 17.5, alias: 'hb haemoglobin anaemia anemia cbc', conv: { 'g/l': 0.1 } },
-  '6690-2': { name: 'White blood cells', unit: '10*3/uL', low: 4, high: 11, alias: 'wbc leukocytes tlc cbc' },
-  '789-8': { name: 'Red blood cells', unit: '10*6/uL', low: 4.2, high: 5.9, alias: 'rbc erythrocytes cbc' },
-  '777-3': { name: 'Platelets', unit: '10*3/uL', low: 150, high: 450, alias: 'plt cbc' },
+  '6690-2': { name: 'White blood cells', unit: '10*3/uL', low: 4, high: 11, alias: 'wbc leukocytes tlc cbc', conv: { '/cumm': 0.001, 'cells/cumm': 0.001, '/ul': 0.001, '10^3/ul': 1, 'x10^3/ul': 1, 'thou/ul': 1, 'k/ul': 1, '10^9/l': 1 } },
+  '789-8': { name: 'Red blood cells', unit: '10*6/uL', low: 4.2, high: 5.9, alias: 'rbc erythrocytes cbc', conv: { 'million/cumm': 1, 'mill/cumm': 1, '10^6/ul': 1, 'x10^6/ul': 1, 'm/ul': 1, '10^12/l': 1 } },
+  '777-3': { name: 'Platelets', unit: '10*3/uL', low: 150, high: 450, alias: 'plt cbc', conv: { '/cumm': 0.001, 'cells/cumm': 0.001, 'lakh/cumm': 100, 'lakhs/cumm': 100, '/ul': 0.001, '10^3/ul': 1, 'x10^3/ul': 1, 'thou/ul': 1, 'k/ul': 1, '10^9/l': 1 } },
   '4544-3': { name: 'Hematocrit', unit: '%', low: 36, high: 52, alias: 'haematocrit pcv cbc' },
   '2947-0': { name: 'Sodium', unit: 'mmol/L', low: 135, high: 145, alias: 'electrolytes na' },
   '6298-4': { name: 'Potassium', unit: 'mmol/L', low: 3.5, high: 5.1, alias: 'electrolytes k' },
@@ -43,6 +43,13 @@ export const BRANDS = {
   cetzine: ['cetirizine'], allegra: ['fexofenadine'], montair: ['montelukast'],
   thyronorm: ['levothyroxine'], eltroxin: ['levothyroxine'], zyloric: ['allopurinol'],
   lasix: ['furosemide'], shelcal: ['calcium'], neurobion: ['vitamin b12'],
+  // brands common in the US, which is where the sample patients' records come from
+  tylenol: ['paracetamol'], advil: ['ibuprofen'], motrin: ['ibuprofen'], aleve: ['naproxen'],
+  percocet: ['paracetamol', 'oxycodone'], oxycontin: ['oxycodone'], vicodin: ['paracetamol', 'hydrocodone'], norco: ['paracetamol', 'hydrocodone'],
+  zocor: ['simvastatin'], lipitor: ['atorvastatin'], crestor: ['rosuvastatin'], zyrtec: ['cetirizine'], claritin: ['loratadine'],
+  benadryl: ['diphenhydramine'], prilosec: ['omeprazole'], nexium: ['esomeprazole'], zestril: ['lisinopril'], lopressor: ['metoprolol'],
+  glucophage: ['metformin'], synthroid: ['levothyroxine'], zoloft: ['sertraline'], plavix: ['clopidogrel'], ventolin: ['salbutamol'],
+  amoxil: ['amoxicillin'], zithromax: ['azithromycin'], coumadin: ['warfarin'],
 };
 
 // Generic names we recognise (value = canonical ingredient). Synthea misspells simvastatin.
@@ -60,6 +67,7 @@ export const INGREDIENTS = {
   clavulanate: 'clavulanic acid', loratadine: 'loratadine', astemizole: 'astemizole', terfenadine: 'terfenadine',
   hydrocodone: 'hydrocodone', oxycodone: 'oxycodone', fentanyl: 'fentanyl', morphine: 'morphine', tramadol: 'tramadol',
   sertraline: 'sertraline', clopidogrel: 'clopidogrel', lisinopril: 'lisinopril', metoprolol: 'metoprolol',
+  esomeprazole: 'esomeprazole', warfarin: 'warfarin', prednisolone: 'prednisolone', prednisone: 'prednisone',
 };
 
 export const FAMILIES = {

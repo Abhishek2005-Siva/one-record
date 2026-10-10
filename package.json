@@ -4,14 +4,19 @@
   "private": true,
   "description": "One timeline for a patient's scattered medical records, shareable with a hospital by consent.",
   "type": "module",
-  "engines": { "node": "22.x" },
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "express": "^4.21.0"
+    "@napi-rs/canvas": "^1.0.11",
+    "express": "^4.21.0",
+    "pdfjs-dist": "^6.4.299",
+    "tesseract.js": "^7.0.0"
   },
   "license": "MIT"
 }
